@@ -1,0 +1,19 @@
+server:
+  address: 127.0.0.1
+  port: 8080
+  shutdown: graceful
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 2s
+  application:
+    name: OrderFlow
+  main:
+    web-application-type: reactive
+orderflow:
+  open-browser: true
+  kafka:
+    enabled: false
+    topic: orderflow.trades
+logging:
+  file:
+    name: ${user.home}/.orderflow/logs/orderflow.log
