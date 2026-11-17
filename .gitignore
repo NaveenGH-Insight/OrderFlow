@@ -1,0 +1,12 @@
+/target/
+/frontend/node_modules/
+/frontend/*.tsbuildinfo
+/frontend/dist/
+/tooling/portable/
+/src/main/resources/static/
+/dist/
+/.playwright-mcp/
+*.msi
+*.log
+.idea/
+.vscode/
