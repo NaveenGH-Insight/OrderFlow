@@ -3,9 +3,9 @@
 /frontend/*.tsbuildinfo
 /frontend/dist/
 /tooling/portable/
-/src/main/resources/static/assets/
-/src/main/resources/static/index.html
+/src/main/resources/static/
 /dist/
+/.playwright-mcp/
 *.msi
 *.log
 .idea/

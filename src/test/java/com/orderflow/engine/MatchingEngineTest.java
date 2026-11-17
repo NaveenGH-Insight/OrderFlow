@@ -100,6 +100,21 @@ class MatchingEngineTest {
         assertEquals(9, ledger.availableShares("buyer"));
     }
 
+    @Test
+    void refreshingOneAccountsQuotesReleasesOnlyItsReservations() {
+        sell("maker-ask", "seller-a", 10_000, 4);
+        sell("other-ask", "seller-b", 10_100, 2);
+        ledger.reserve("buyer", OrderSide.BUY, 9_990, 3);
+        engine.place("user-bid", request("buyer", OrderSide.BUY, OrderType.LIMIT, 9_990, 3), 9_990);
+
+        assertEquals(1, engine.cancelAccountOrders("seller-a"));
+        assertEquals(100, ledger.availableShares("seller-a"));
+        assertEquals(98, ledger.availableShares("seller-b"));
+        assertEquals(2, engine.openOrderCount());
+        assertEquals(10_100, engine.snapshot("buyer").bestAskTicks());
+        assertEquals(970_030, ledger.availableCash("buyer"));
+    }
+
     private void sell(String id, String account, long price, long quantity) {
         ledger.reserve(account, OrderSide.SELL, price, quantity);
         engine.place(id, request(account, OrderSide.SELL, OrderType.LIMIT, price, quantity), price);

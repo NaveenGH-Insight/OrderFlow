@@ -22,6 +22,12 @@ flowchart LR
 5. A scheduler requests a consistent book snapshot every 100 ms and broadcasts it through a replay-latest Reactor sink to SSE clients. Matching snapshots are protected from concurrent reads; this is not a claim that every component is lock-free.
 6. Matched trades update recent executions and one-minute candles. Kafka publication is an optional asynchronous downstream adapter.
 
+## Evolving simulated market
+
+The liquidity simulator replaces its own account's standing orders every 650 ms with seven price levels per side, variable quantities and a narrow changing spread. Its stochastic momentum model evolves the quote midpoint; it does not pin the book to the opening price. Independently funded opposing market flow generates actual matches. The entire two-sided quote refresh is one Disruptor command under the engine's snapshot lock, so clients cannot observe the temporary gap between removing old quotes and adding replacements. Cancellations release the remaining cash/share reservations without touching the student's orders.
+
+Startup replays 720 sets of simulated orders at five-second historical intervals, giving 60 minutes of genuine engine-produced OHLC/volume immediately. A replay clock timestamps those matches and is restored to wall time before regular activity starts. Replay prints are simulated history, not retrieved exchange history. Both the initial chart and its ongoing updates are derived from matched executions; the frontend only aggregates one-minute candles into requested 5m or 15m buckets and renders them. No random prices or candles are generated in the browser.
+
 ## Local API
 
 - `GET /api/health`

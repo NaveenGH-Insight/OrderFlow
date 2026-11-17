@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.orderflow</groupId>
   <artifactId>orderflow</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.2</version>
   <name>OrderFlow</name>
   <description>Educational, simulated order matching and market data terminal</description>
   <properties>

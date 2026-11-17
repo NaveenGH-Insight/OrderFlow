@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Component
@@ -44,6 +45,7 @@ public class OrderGateway {
                 Object value = switch (event.action) {
                     case OrderEvent.PLACE -> engine.place(event.orderId, event.request, event.effectiveLimitTicks);
                     case OrderEvent.CANCEL -> engine.cancel(event.accountId, event.orderId);
+                    case OrderEvent.REPLACE_QUOTES -> engine.replaceSimulationQuotes(event.quotes);
                     default -> throw new IllegalStateException("Unknown order event");
                 };
                 event.result.complete(value);
@@ -92,6 +94,25 @@ public class OrderGateway {
         long started = System.nanoTime();
         return publish(OrderEvent.CANCEL, orderId, accountId, null, 0, started)
                 .thenApply(OrderResponse.class::cast);
+    }
+
+    public CompletableFuture<Integer> replaceSimulationQuotes(List<OrderRequest> requests) {
+        List<OrderRequest> quotes = List.copyOf(requests);
+        for (OrderRequest quote : quotes) {
+            validate(quote);
+            if (!quote.accountId().equals("market-maker") || quote.type() != OrderType.LIMIT) {
+                throw new IllegalArgumentException("Only limit quotes for the market-maker account may be refreshed.");
+            }
+        }
+        CompletableFuture<Object> result = new CompletableFuture<>();
+        long started = System.nanoTime();
+        if (!ring.tryPublishEvent((event, sequence) -> {
+            event.action = OrderEvent.REPLACE_QUOTES;
+            event.quotes = quotes;
+            event.startedNanos = started;
+            event.result = result;
+        })) throw new EngineBusyException("Matching engine queue is full; retry shortly.");
+        return result.thenApply(Integer.class::cast);
     }
 
     public MarketSnapshot snapshot(String accountId) {

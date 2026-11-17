@@ -9,8 +9,9 @@ import com.orderflow.domain.OrderSide;
 import com.orderflow.domain.OrderType;
 import com.orderflow.domain.Trade;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
-import java.time.Instant;
+import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -28,19 +29,27 @@ public class MatchingEngine {
     private static final int CANDLE_CAPACITY = 120;
     private final RiskLedger riskLedger;
     private final Consumer<Trade> tradePublisher;
+    private final Clock clock;
     private final TreeMap<Long, Deque<RestingOrder>> bids = new TreeMap<>(java.util.Comparator.reverseOrder());
     private final TreeMap<Long, Deque<RestingOrder>> asks = new TreeMap<>();
     private final Map<String, RestingOrder> openOrders = new HashMap<>();
     private final Deque<Trade> trades = new ArrayDeque<>();
     private final Deque<Candle> candles = new ArrayDeque<>();
     private final AtomicLong tradeSequence = new AtomicLong();
-    private long lastPriceTicks = 10_000;
+    private long lastPriceTicks = 18_640;
     private long marketSequence;
+    private long quoteSequence;
     private Candle activeCandle;
 
     public MatchingEngine(RiskLedger riskLedger, TradeBroadcaster tradePublisher) {
+        this(riskLedger, tradePublisher, Clock.systemUTC());
+    }
+
+    @Autowired
+    public MatchingEngine(RiskLedger riskLedger, TradeBroadcaster tradePublisher, Clock clock) {
         this.riskLedger = riskLedger;
         this.tradePublisher = tradePublisher::publish;
+        this.clock = clock;
     }
 
     public synchronized long bestOpposingPrice(OrderSide side) {
@@ -73,7 +82,7 @@ public class MatchingEngine {
             long buyerLimit = request.side() == OrderSide.BUY ? effectiveLimitTicks : maker.priceTicks;
             riskLedger.settle(buyer, seller, buyerLimit, price, matchQuantity);
             Trade trade = new Trade(Long.toString(tradeSequence.incrementAndGet()),
-                    request.symbol(), price, matchQuantity, request.side().name(), Instant.now());
+                    request.symbol(), price, matchQuantity, request.side().name(), clock.instant());
             appendTrade(trade);
             tradePublisher.accept(trade);
             maker.remaining -= matchQuantity;
@@ -116,6 +125,7 @@ public class MatchingEngine {
         if (order == null || !order.accountId.equals(accountId)) {
             throw new IllegalArgumentException("Open order not found for this account");
         }
+
         TreeMap<Long, Deque<RestingOrder>> side = order.side == OrderSide.BUY ? bids : asks;
         Deque<RestingOrder> level = side.get(order.priceTicks);
         level.remove(order);
@@ -125,6 +135,33 @@ public class MatchingEngine {
         marketSequence++;
         return new OrderResponse(orderId, "CANCELLED", order.quantity - order.remaining,
                 order.remaining, 0, "Remaining funds or shares released.");
+    }
+
+    public synchronized int cancelAccountOrders(String accountId) {
+        int cancelled = 0;
+        var iterator = openOrders.values().iterator();
+        while (iterator.hasNext()) {
+            RestingOrder order = iterator.next();
+            if (!order.accountId.equals(accountId)) continue;
+            TreeMap<Long, Deque<RestingOrder>> side = order.side == OrderSide.BUY ? bids : asks;
+            Deque<RestingOrder> level = side.get(order.priceTicks);
+            level.remove(order);
+            if (level.isEmpty()) side.remove(order.priceTicks);
+            riskLedger.release(accountId, order.side, order.priceTicks, order.remaining);
+            iterator.remove();
+            cancelled++;
+        }
+        marketSequence++;
+        return cancelled;
+    }
+
+    public synchronized int replaceSimulationQuotes(List<OrderRequest> quotes) {
+        cancelAccountOrders("market-maker");
+        for (OrderRequest quote : quotes) {
+            riskLedger.reserve(quote.accountId(), quote.side(), quote.priceTicks(), quote.quantity());
+            place("quote-" + ++quoteSequence, quote, quote.priceTicks());
+        }
+        return quotes.size();
     }
 
     public synchronized MarketSnapshot snapshot(String accountId) {

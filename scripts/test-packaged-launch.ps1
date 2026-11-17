@@ -20,8 +20,11 @@ try {
         try {
             $health = Invoke-RestMethod "http://127.0.0.1:8080/api/health" -TimeoutSec 1
             if ($health.status -eq "UP" -and $health.application -eq "OrderFlow") {
-                $ready = $true
-                break
+                $initial = Invoke-RestMethod "http://127.0.0.1:8080/api/market/snapshot" -TimeoutSec 1
+                if ($initial.candles.Count -ge 60) {
+                    $ready = $true
+                    break
+                }
             }
         } catch [System.Net.WebException] {
             Start-Sleep -Milliseconds 500
@@ -42,6 +45,19 @@ try {
     if ($snapshot.bestBidTicks -le 0 -or $snapshot.bestAskTicks -le $snapshot.bestBidTicks) {
         throw "The packaged engine did not provide seeded market depth."
     }
+    $prices = @()
+    for ($sample = 0; $sample -lt 12; $sample++) {
+        $market = Invoke-RestMethod "http://127.0.0.1:8080/api/market/snapshot" -TimeoutSec 5
+        if ($market.lastPriceTicks -ne $market.trades[0].priceTicks -or
+            $market.bestBidTicks -le 0 -or $market.bestAskTicks -le $market.bestBidTicks) {
+            throw "Market snapshots are not consistent with matched trades and two-sided depth."
+        }
+        $prices += $market.lastPriceTicks
+        Start-Sleep -Milliseconds 700
+    }
+    if (($prices | Sort-Object -Unique).Count -lt 4) {
+        throw "The packaged market did not evolve beyond static bid/ask prices."
+    }
 
     $second = Start-Process -FilePath $executable -WorkingDirectory $directory -PassThru
     if (-not $second.WaitForExit(20000)) { throw "Second launcher did not reuse the existing instance and exit." }
@@ -49,7 +65,7 @@ try {
     if ($second.ExitCode -ne 0) { throw "Second launcher exited with error $($second.ExitCode)." }
     $listenerAfter = Get-NetTCPConnection -LocalPort 8080 -State Listen
     if ($listenerAfter.OwningProcess -ne $serverPid) { throw "Second launch replaced the original backend." }
-    Write-Output "PASS: packaged EXE served health, frontend, and seeded depth; second launch exited 0 and reused backend PID $serverPid."
+    Write-Output "PASS: packaged EXE served health, frontend, 60+ candles and evolving execution prices; second launch exited 0 and reused backend PID $serverPid."
 } finally {
     if ($first) {
         try {

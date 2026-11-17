@@ -44,7 +44,7 @@ try {
     jpackage `
         --type msi `
         --name OrderFlow `
-        --app-version 1.0.1 `
+        --app-version 1.0.2 `
         --vendor "NaveenGH-Insight" `
         --description "Educational simulated order matching and market data terminal" `
         --input $input `
@@ -59,7 +59,7 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "jpackage failed. Confirm the WiX Toolset version supported by your JDK is installed and on PATH."
     }
-    $installer = Join-Path $dist "OrderFlow-1.0.1.msi"
+    $installer = Join-Path $dist "OrderFlow-1.0.2.msi"
     if (-not (Test-Path $installer)) { throw "jpackage returned success but the expected MSI was not created." }
     Write-Output "Unsigned installer created: $installer"
 } finally {

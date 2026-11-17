@@ -6,10 +6,10 @@ OrderFlow is a desktop-packaged educational trading simulation: a Java LMAX Disr
 
 - Limit and protected-market buy/sell orders for the `ORDF` demo instrument.
 - Price-time-priority matching, self-trade prevention, and order cancellation.
-- Simulated pre-trade cash/share reservations, seeded demo liquidity, and a small activity simulator.
+- Simulated pre-trade cash/share reservations and continuously repriced, variable-sized liquidity.
 - SSE snapshots, aggregated Level 2 depth, recent executions, and one-minute candles.
 - Optional Kafka trade-event producer for downstream consumers; local SSE works without Kafka.
-- Canvas-based depth/candle visualization, accessible order-entry feedback, and a responsive dark terminal.
+- Canvas-based financial candles with wicks, volume, time/price axes, crosshair, and 1m/5m/15m intervals.
 - Unit/protocol tests and a matching-core benchmark that reports measured throughput and p99 latency.
 - A Windows MSI packaging script that uses `jpackage` and bundles its Java runtime.
 
@@ -17,7 +17,7 @@ All prices are integer cents per share (`priceTicks`); all funds are simulated c
 
 ## Run from source
 
-Prerequisites: JDK 21, Maven 3.9+, and Node.js 20+ with npm. From the repository root in PowerShell:
+Prerequisites: JDK 21, Maven 3.9+, and Node.js 22.18+ with npm. From the repository root in PowerShell:
 
 ```powershell
 Push-Location frontend
@@ -41,7 +41,13 @@ On Windows, install JDK 21 (with `jpackage`/`jlink`), Maven, Node.js/npm, and th
 ./scripts/package-msi.ps1
 ```
 
-The script builds the UI and backend, runs Maven tests, and writes `dist/OrderFlow-1.0.1.msi`. `jpackage` bundles a Java runtime so an end user does not need Java or a developer toolchain. The workflow at `.github/workflows/build-windows.yml` performs the Windows build and publishes the MSI as a downloadable workflow artifact.
+The script builds the UI and backend, runs Maven tests, and writes `dist/OrderFlow-1.0.2.msi`. `jpackage` bundles a Java runtime so an end user does not need Java or a developer toolchain. The workflow at `.github/workflows/build-windows.yml` performs the Windows build and publishes the MSI as a downloadable workflow artifact.
+
+### Moving prices and execution-based candles
+
+The simulator continuously cancel/replaces only the market-maker's quotes, varies price, spread and quantity, and submits funded opposing market orders through the same risk checks and matching engine used by the terminal. Persistent stochastic order-flow momentum produces trends and reversals instead of alternating between two fixed quotes. User orders are not canceled by quote refreshes.
+
+At startup the engine replays 60 minutes of historical **simulated orders** with explicit replay timestamps. Their actual matched executions populate the initial one-minute candles and volume; the replay clock then returns to wall time for ongoing activity. The chart never generates decorative OHLC values. The client aggregates these execution-derived minutes for its 5m/15m views. The session move/high/low/volume reflect the retained candle window, not real exchange data. These are locally generated prices and funds; no external market-data provider is connected.
 
 ### Windows launch troubleshooting
 
@@ -55,6 +61,9 @@ The generated installer is unsigned unless signing is added in a controlled rele
 
 ```powershell
 mvn -B verify
+Push-Location frontend
+npm test
+Pop-Location
 ./scripts/benchmark.ps1
 ```
 
